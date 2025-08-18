@@ -2,9 +2,6 @@
 import { GridCell, Position } from "../types";
 import { cellStateColors } from "../constants";
 
-// Helper delay function
-const delay = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Generates a maze using a recursive backtracker (DFS) algorithm.

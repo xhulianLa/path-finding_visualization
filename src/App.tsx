@@ -38,7 +38,6 @@ interface AppState {
 type AppAction =
   | { type: "RESET_GRID" }
   | { type: "SET_GRID"; grid: GridCell[][] }
-  | { type: "RESET_FOR_SIZE"; grid: GridCell[][]; start: Position; end: Position } // NEW
   | { type: "SET_CELL"; x: number; y: number; updates: Partial<GridCell> }
   | { type: "BATCH_UPDATE_CELLS"; updates: { [key: string]: Partial<GridCell> } }
   | { type: "SET_ALGORITHM"; algorithm: AlgorithmType }
@@ -49,28 +48,39 @@ type AppAction =
   | { type: "MOVE_START"; newPos: Position }
   | { type: "MOVE_END"; newPos: Position };
 
-
 // --- Helpers to create/reset the grid ---
-function defaultStartEnd(rows: number, cols: number) {
-  const start: Position = { x: Math.floor(rows / 4), y: Math.floor(cols / 4) };
-  const end: Position = { x: Math.floor(rows / 4), y: Math.floor((3 * cols) / 4) };
-  return { start, end };
-}
-
-function createGrid(rows: number, cols: number, start?: Position, end?: Position): GridCell[][] {
-  const g = makeEmptyGrid(rows, cols); // you already have makeEmptyGrid
-  const s = start ?? defaultStartEnd(rows, cols).start;
-  const e = end ?? defaultStartEnd(rows, cols).end;
-  g[s.x][s.y].state = "start";
-  g[e.x][e.y].state = "end";
-  return g;
-}
-
-const rows0 = initialRows, cols0 = initialColumns;
-const { start: start0, end: end0 } = defaultStartEnd(rows0, cols0);
+const createInitialGrid = (): GridCell[][] => {
+  const grid: GridCell[][] = [];
+  for (let r = 0; r < initialRows; r++) {
+    const row: GridCell[] = [];
+    for (let c = 0; c < initialColumns; c++) {
+      row.push({
+        key: `${r}x${c}`,
+        x: r,
+        y: c,
+        prevNode: null,
+        visited: false,
+        state: "empty",
+        cost: Infinity
+      });
+    }
+    grid.push(row);
+  }
+  const start: Position = {
+    x: Math.floor(initialRows / 4),
+    y: Math.floor(initialColumns / 4)
+  };
+  const end: Position = {
+    x: Math.floor(initialRows / 4),
+    y: Math.floor((3 * initialColumns) / 4)
+  };
+  grid[start.x][start.y].state = "start";
+  grid[end.x][end.y].state = "end";
+  return grid;
+};
 
 const initialState: AppState = {
-  grid: createGrid(rows0, cols0, start0, end0),
+  grid: createInitialGrid(),
   algorithm: "dijkstra",
   isRunning: false,
   drawMode: null,
@@ -105,18 +115,6 @@ function gridReducer(state: AppState, action: AppAction): AppState {
             )
             : row
         )
-      };
-
-    case "RESET_FOR_SIZE":
-      return {
-        ...state,
-        grid: action.grid,
-        start: action.start,
-        end: action.end,
-        isRunning: false,
-        drawMode: null,
-        isDraggingStart: false,
-        isDraggingEnd: false
       };
 
     case "BATCH_UPDATE_CELLS":
@@ -170,70 +168,6 @@ function gridReducer(state: AppState, action: AppAction): AppState {
   }
 }
 
-const MIN_CELL_PX = 35; // tweak to taste
-
-function makeEmptyGrid(rows: number, cols: number): GridCell[][] {
-  const g: GridCell[][] = [];
-  for (let r = 0; r < rows; r++) {
-    const row: GridCell[] = [];
-    for (let c = 0; c < cols; c++) {
-      row.push({
-        key: `${r}x${c}`,
-        x: r,
-        y: c,
-        prevNode: null,
-        visited: false,
-        state: "empty",
-        cost: Infinity
-      });
-    }
-    g.push(row);
-  }
-  return g;
-}
-
-/** Resize while preserving overlapping walls; clamp start/end. */
-function rebuildGridForSize(
-  oldGrid: GridCell[][],
-  oldStart: Position,
-  oldEnd: Position,
-  rows: number,
-  cols: number
-): { grid: GridCell[][]; start: Position; end: Position } {
-  const newGrid = makeEmptyGrid(rows, cols);
-
-  const oldRows = oldGrid.length;
-  const oldCols = oldGrid[0].length;
-
-  // copy overlapping walls (drop visited/path when resizing)
-  const keepRows = Math.min(oldRows, rows);
-  const keepCols = Math.min(oldCols, cols);
-  for (let r = 0; r < keepRows; r++) {
-    for (let c = 0; c < keepCols; c++) {
-      if (oldGrid[r][c].state === "wall") {
-        newGrid[r][c].state = "wall";
-      }
-    }
-  }
-
-  // clamp start/end into bounds
-  const start: Position = {
-    x: Math.min(rows - 1, oldStart.x),
-    y: Math.min(cols - 1, oldStart.y)
-  };
-  const end: Position = {
-    x: Math.min(rows - 1, oldEnd.x),
-    y: Math.min(cols - 1, oldEnd.y)
-  };
-
-  // place start/end (overrides wall if needed)
-  newGrid[start.x][start.y].state = "start";
-  newGrid[end.x][end.y].state = "end";
-
-  return { grid: newGrid, start, end };
-}
-
-
 // --- Component ---
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(gridReducer, initialState);
@@ -241,12 +175,6 @@ const App: React.FC = () => {
   const [animationSpeed, setAnimationSpeed] = useState(25);
   const isDragging = useRef(false);
   const lastCell = useRef<Position | null>(null);
-  const gridContainerRef = useRef<HTMLDivElement>(null);
-  const [gridPx, setGridPx] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-  const [dims, setDims] = useState<{ rows: number; cols: number }>({
-    rows: state.grid.length,
-    cols: state.grid[0].length
-  });
 
   // Keep latest grid in a ref for the algorithm
   const gridRef = useRef(state.grid);
@@ -267,55 +195,6 @@ const App: React.FC = () => {
     document.addEventListener("mouseup", onUp);
     return () => document.removeEventListener("mouseup", onUp);
   }, []);
-
-
-  useEffect(() => {
-    const host = gridContainerRef.current;
-    if (!host) return;
-
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-
-      // choose rows/cols so each cell is at least MIN_CELL_PX
-      let cols = Math.max(1, Math.floor(width / MIN_CELL_PX));
-      let rows = Math.max(1, Math.floor(height / MIN_CELL_PX));
-
-      // with those counts, compute the actual integer cell size that fits
-      const cell = Math.floor(Math.min(width / cols, height / rows));
-
-      // if rounding the cell up would overflow, recompute rows/cols from the true cell
-      cols = Math.max(1, Math.floor(width / cell));
-      rows = Math.max(1, Math.floor(height / cell));
-
-      const w = cols * cell;
-      const h = rows * cell;
-
-      setGridPx({ w, h });
-
-      // Resize data model if the counts changed
-      const curRows = state.grid.length;
-      const curCols = state.grid[0].length;
-      if (rows !== curRows || cols !== curCols) {
-        const { grid, start, end } = rebuildGridForSize(
-          state.grid,
-          state.start,
-          state.end,
-          rows,
-          cols
-        );
-        setDims({ rows, cols });
-        dispatch({ type: "RESET_FOR_SIZE", grid, start, end });
-        gridRef.current = grid;
-      } else {
-        // just refresh dims, no data change
-        setDims({ rows, cols });
-      }
-    });
-
-    ro.observe(host);
-    return () => ro.disconnect();
-    // include pieces we read inside; reducer updates are safe here
-  }, [state.grid, state.start, state.end]);
 
   // Briefly disable hover after mouse-up
   const [canHover, setCanHover] = useState(true);
@@ -419,7 +298,7 @@ const App: React.FC = () => {
   }, [handleMouseUp]);
 
   const handleCellMouseUp = useCallback(
-    (x: number, y: number) => {
+    () => {
       handleMouseUp();
     },
     [handleMouseUp]
@@ -441,7 +320,7 @@ const App: React.FC = () => {
         }
         return {
           ...cell,
-          state: "empty",
+          state: "empty" as const,
           visited: false,
           prevNode: null,
           cost: Infinity
@@ -454,37 +333,46 @@ const App: React.FC = () => {
 
   const resetGrid = useCallback(() => {
     if (state.isRunning) return;
-    const rows = state.grid.length;
-    const cols = state.grid[0].length;
-    const clean = createGrid(rows, cols, state.start, state.end);
-    dispatch({ type: "RESET_FOR_SIZE", grid: clean, start: state.start, end: state.end });
-  }, [state]);
-
+    dispatch({ type: "RESET_GRID" });
+  }, [state.isRunning]);
 
   const generateMaze = useCallback(async () => {
     if (state.isRunning) return;
     dispatch({ type: "SET_RUNNING", isRunning: true });
     try {
-      const rows = state.grid.length;
-      const cols = state.grid[0].length;
+      // Start with fresh grid and current start/end
+      const fresh = createInitialGrid();
+      fresh[state.start.x][state.start.y].state = "start";
+      fresh[state.end.x][state.end.y].state = "end";
 
-      // Fresh, size-matched, and with the current start/end baked in
-      const fresh = createGrid(rows, cols, state.start, state.end);
+      // Clear any stray default start/end
+      for (let i = 0; i < fresh.length; i++) {
+        for (let j = 0; j < fresh[0].length; j++) {
+          if (
+            (i === state.start.x && j === state.start.y) ||
+            (i === state.end.x && j === state.end.y)
+          )
+            continue;
+          if (fresh[i][j].state === "start" || fresh[i][j].state === "end") {
+            fresh[i][j].state = "empty";
+          }
+        }
+      }
 
       gridRef.current = fresh;
 
+      // Run the maze generator
       const newGrid = await generateMazeDFS(
         fresh,
         state.start,
-        animationSpeed || 1, // use your UI speed (or 10 as fallback)
+        10,
         async (g) => {
-          // live animation updates
           dispatch({ type: "SET_GRID", grid: [...g] });
           gridRef.current = g;
         }
       );
 
-      // Ensure start/end remain correct after generation
+      // **Re-insert** start & end after generation
       newGrid[state.start.x][state.start.y].state = "start";
       newGrid[state.end.x][state.end.y].state = "end";
 
@@ -495,8 +383,7 @@ const App: React.FC = () => {
     } finally {
       dispatch({ type: "SET_RUNNING", isRunning: false });
     }
-  }, [state.start, state.end, state.isRunning, animationSpeed]);
-
+  }, [state.start, state.end, state.isRunning]);
 
   // Pick algorithm
   const runSelectedAlgorithm = useCallback(
@@ -677,7 +564,6 @@ const App: React.FC = () => {
 
       <div
         className="gridContainer"
-        ref={gridContainerRef}
         onMouseMove={(e) => {
           if (e.buttons !== 1 || state.isRunning) return;
           const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -694,10 +580,8 @@ const App: React.FC = () => {
         <div
           className="grid"
           style={{
-            width: `${Math.floor(gridPx.w * 0.9)}px`,
-            height: `${Math.floor(gridPx.h * 0.9)}px`,
-            gridTemplateColumns: `repeat(${dims.cols}, 1fr)`,
-            gridTemplateRows: `repeat(${dims.rows}, 1fr)`
+            gridTemplateColumns: `repeat(${initialColumns}, 1fr)`,
+            gridTemplateRows: `repeat(${initialRows}, 1fr)`
           }}
         >
           {state.grid.map((row) =>

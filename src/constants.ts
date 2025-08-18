@@ -1,6 +1,6 @@
 // src/constants.ts
-export const initialRows = 25;
-export const initialColumns = 6;
+export const initialRows = 22;
+export const initialColumns = 61;
 
 export const cellStateColors = {
     empty: "white",
