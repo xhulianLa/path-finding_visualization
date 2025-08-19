@@ -1,54 +1,77 @@
-# React + TypeScript + Vite
+# Pathfinding Visualization
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React TypeScript application that visualizes various pathfinding algorithms in real-time. Users can create walls, generate mazes, and watch how different algorithms find their way from start to end points.
 
-Currently, two official plugins are available:
+App can be viewed online at https://xhulianla.github.io/path-finding_visualization/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Features
 
-## Expanding the ESLint configuration
+- Multiple pathfinding algorithms:
+  - Dijkstra's Algorithm
+  - A* Search
+  - Depth-First Search (DFS)
+  - Breadth-First Search (BFS)
+- Interactive grid with drag-and-drop start/end points
+- Wall drawing capability
+- Maze generation
+- Adjustable visualization speed
+  
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+- Node.js (v14 or higher)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository
+```bash
+git clone https://github.com/yourusername/pathfinding_visualization.git
+cd pathfinding_visualization
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+2. Install dependencies
+```bash
+npm install
+# or
+yarn install
 ```
+
+3. Start the development server
+```bash
+npm run dev
+# or
+yarn dev
+```
+
+## Usage
+
+1. **Grid Interaction**:
+   - Click and drag to create walls
+   - Click and drag start (green) or end (red) points to relocate them
+   - Click "Reset Grid" to clear all walls
+   - Click "Reset Path" to clear the current path visualization
+
+2. **Algorithm Selection**:
+   - Choose an algorithm from the dropdown menu
+   - Each algorithm has different characteristics:
+     - Dijkstra: Guarantees shortest path, explores uniformly
+     - A*: Uses heuristics for efficient pathfinding
+     - DFS: Explores deeply before backtracking
+     - BFS: Explores level by level
+
+3. **Visualization Controls**:
+   - Adjust speed using the speed dropdown
+   - Watch the algorithm explore the grid in real-time
+
+4. **Maze Generation**:
+   - Click "Generate Maze" to create a random maze
+   - The maze will maintain valid paths between start and end points
+
+## Built With
+
+- React
+- TypeScript
+- Vite
+- CSS
