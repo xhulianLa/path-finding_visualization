@@ -15,9 +15,10 @@ import { bfs } from "./algorithms/bfs";
 import { generateMazeDFS } from "./algorithms/mazeGenerator";
 import { GridCell, Position } from "./types";
 import {
-  initialRows,
-  initialColumns,
-  ANIMATION_BATCH_SIZE
+  ANIMATION_BATCH_SIZE,
+  FALLBACK_VIEWPORT,
+  GridMetrics,
+  calculateResponsiveGrid
 } from "./constants";
 
 // --- Types ---
@@ -26,6 +27,8 @@ type DrawModeType = "wall" | "empty" | null;
 
 interface AppState {
   grid: GridCell[][];
+  rows: number;
+  cols: number;
   algorithm: AlgorithmType;
   isRunning: boolean;
   drawMode: DrawModeType;
@@ -35,8 +38,16 @@ interface AppState {
   isDraggingEnd: boolean;
 }
 
+interface GridStructurePayload {
+  grid: GridCell[][];
+  start: Position;
+  end: Position;
+  rows: number;
+  cols: number;
+}
+
 type AppAction =
-  | { type: "RESET_GRID" }
+  | { type: "RESET_GRID"; payload: GridStructurePayload }
   | { type: "SET_GRID"; grid: GridCell[][] }
   | { type: "SET_CELL"; x: number; y: number; updates: Partial<GridCell> }
   | { type: "BATCH_UPDATE_CELLS"; updates: { [key: string]: Partial<GridCell> } }
@@ -49,58 +60,124 @@ type AppAction =
   | { type: "MOVE_END"; newPos: Position };
 
 // --- Helpers to create/reset the grid ---
-const createInitialGrid = (): GridCell[][] => {
-  const grid: GridCell[][] = [];
-  for (let r = 0; r < initialRows; r++) {
-    const row: GridCell[] = [];
-    for (let c = 0; c < initialColumns; c++) {
-      row.push({
-        key: `${r}x${c}`,
-        x: r,
-        y: c,
-        prevNode: null,
-        visited: false,
-        state: "empty",
-        cost: Infinity
-      });
+const clampPositionWithinGrid = (
+  pos: Position,
+  rows: number,
+  cols: number
+): Position => ({
+  x: Math.min(Math.max(pos.x, 0), rows - 1),
+  y: Math.min(Math.max(pos.y, 0), cols - 1)
+});
+
+const ensureDistinctEndpoints = (
+  start: Position,
+  end: Position,
+  rows: number,
+  cols: number
+): { start: Position; end: Position } => {
+  const safeStart = clampPositionWithinGrid(start, rows, cols);
+  let safeEnd = clampPositionWithinGrid(end, rows, cols);
+
+  if (safeStart.x === safeEnd.x && safeStart.y === safeEnd.y) {
+    if (cols > 1) {
+      const delta = safeEnd.y + 1 <= cols - 1 ? 1 : -1;
+      safeEnd = { x: safeEnd.x, y: Math.min(cols - 1, Math.max(0, safeEnd.y + delta)) };
+    } else if (rows > 1) {
+      const delta = safeEnd.x + 1 <= rows - 1 ? 1 : -1;
+      safeEnd = { x: Math.min(rows - 1, Math.max(0, safeEnd.x + delta)), y: safeEnd.y };
     }
-    grid.push(row);
   }
-  const start: Position = {
-    x: Math.floor(initialRows / 4),
-    y: Math.floor(initialColumns / 4)
-  };
-  const end: Position = {
-    x: Math.floor(initialRows / 4),
-    y: Math.floor((3 * initialColumns) / 4)
-  };
-  grid[start.x][start.y].state = "start";
-  grid[end.x][end.y].state = "end";
-  return grid;
+
+  return { start: safeStart, end: safeEnd };
 };
 
-const initialState: AppState = {
-  grid: createInitialGrid(),
-  algorithm: "dijkstra",
-  isRunning: false,
-  drawMode: null,
-  start: {
-    x: Math.floor(initialRows / 4),
-    y: Math.floor(initialColumns / 4)
-  },
-  end: {
-    x: Math.floor(initialRows / 4),
-    y: Math.floor((3 * initialColumns) / 4)
-  },
-  isDraggingStart: false,
-  isDraggingEnd: false
+const buildGridStructure = (
+  rows: number,
+  cols: number,
+  options: {
+    start?: Position;
+    end?: Position;
+    preserveWallsFrom?: GridCell[][];
+  } = {}
+): GridStructurePayload => {
+  const grid: GridCell[][] = Array.from({ length: rows }, (_, r) =>
+    Array.from({ length: cols }, (_, c) => ({
+      key: `${r}x${c}`,
+      x: r,
+      y: c,
+      prevNode: null,
+      visited: false,
+      state: "empty" as GridCell["state"],
+      cost: Infinity
+    }))
+  );
+
+  if (options.preserveWallsFrom) {
+    const base = options.preserveWallsFrom;
+    for (let r = 0; r < Math.min(rows, base.length); r++) {
+      for (let c = 0; c < Math.min(cols, base[0]?.length ?? 0); c++) {
+        if (base[r][c].state === "wall") {
+          grid[r][c].state = "wall";
+        }
+      }
+    }
+  }
+
+  const defaultStart: Position = {
+    x: Math.min(rows - 1, Math.max(0, Math.floor(rows / 4))),
+    y: Math.min(cols - 1, Math.max(0, Math.floor(cols / 4)))
+  };
+  const defaultEnd: Position = {
+    x: Math.min(rows - 1, Math.max(0, Math.floor(rows / 4))),
+    y: Math.min(cols - 1, Math.max(0, Math.floor((3 * cols) / 4)))
+  };
+
+  const { start, end } = ensureDistinctEndpoints(
+    options.start ?? defaultStart,
+    options.end ?? defaultEnd,
+    rows,
+    cols
+  );
+
+  grid[start.x][start.y].state = "start";
+  grid[end.x][end.y].state = "end";
+
+  return { grid, start, end, rows, cols };
 };
+
+const createInitialAppState = (metrics: GridMetrics): AppState => {
+  const structure = buildGridStructure(metrics.rows, metrics.cols);
+  return {
+    grid: structure.grid,
+    rows: structure.rows,
+    cols: structure.cols,
+    algorithm: "dijkstra",
+    isRunning: false,
+    drawMode: null,
+    start: structure.start,
+    end: structure.end,
+    isDraggingStart: false,
+    isDraggingEnd: false
+  };
+};
+
+const resolveInitialMetrics = (): GridMetrics =>
+  typeof window === "undefined"
+    ? calculateResponsiveGrid(FALLBACK_VIEWPORT.width, FALLBACK_VIEWPORT.height)
+    : calculateResponsiveGrid(window.innerWidth, window.innerHeight);
 
 // --- Reducer ---
 function gridReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "RESET_GRID":
-      return { ...initialState, grid: createInitialGrid() };
+      return {
+        ...state,
+        grid: action.payload.grid,
+        start: action.payload.start,
+        end: action.payload.end,
+        rows: action.payload.rows,
+        cols: action.payload.cols
+      };
 
     case "SET_GRID":
       return { ...state, grid: action.grid };
@@ -170,7 +247,14 @@ function gridReducer(state: AppState, action: AppAction): AppState {
 
 // --- Component ---
 const App: React.FC = () => {
-  const [state, dispatch] = useReducer(gridReducer, initialState);
+  const [gridMetrics, setGridMetrics] = useState<GridMetrics>(() =>
+    resolveInitialMetrics()
+  );
+  const [state, dispatch] = useReducer(
+    gridReducer,
+    gridMetrics,
+    (metrics) => createInitialAppState(metrics)
+  );
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [animationSpeed, setAnimationSpeed] = useState(25);
   const isDragging = useRef(false);
@@ -181,6 +265,48 @@ const App: React.FC = () => {
   useEffect(() => {
     gridRef.current = state.grid;
   }, [state.grid]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window === "undefined") return;
+      setGridMetrics((prev) => {
+        const next = calculateResponsiveGrid(
+          window.innerWidth,
+          window.innerHeight
+        );
+        if (
+          next.rows === prev.rows &&
+          next.cols === prev.cols &&
+          next.cellSize === prev.cellSize
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (state.rows === gridMetrics.rows && state.cols === gridMetrics.cols) {
+      return;
+    }
+    const structure = buildGridStructure(gridMetrics.rows, gridMetrics.cols, {
+      preserveWallsFrom: gridRef.current,
+      start: state.start,
+      end: state.end
+    });
+    dispatch({ type: "RESET_GRID", payload: structure });
+  }, [
+    dispatch,
+    gridMetrics.cols,
+    gridMetrics.rows,
+    state.cols,
+    state.rows,
+    state.start,
+    state.end
+  ]);
 
   // Global mouseup: end draw/drag
   useEffect(() => {
@@ -333,32 +459,20 @@ const App: React.FC = () => {
 
   const resetGrid = useCallback(() => {
     if (state.isRunning) return;
-    dispatch({ type: "RESET_GRID" });
-  }, [state.isRunning]);
+    const structure = buildGridStructure(state.rows, state.cols);
+    dispatch({ type: "RESET_GRID", payload: structure });
+    gridRef.current = structure.grid;
+  }, [state.isRunning, state.rows, state.cols]);
 
   const generateMaze = useCallback(async () => {
     if (state.isRunning) return;
     dispatch({ type: "SET_RUNNING", isRunning: true });
     try {
-      // Start with fresh grid and current start/end
-      const fresh = createInitialGrid();
-      fresh[state.start.x][state.start.y].state = "start";
-      fresh[state.end.x][state.end.y].state = "end";
-
-      // Clear any stray default start/end
-      for (let i = 0; i < fresh.length; i++) {
-        for (let j = 0; j < fresh[0].length; j++) {
-          if (
-            (i === state.start.x && j === state.start.y) ||
-            (i === state.end.x && j === state.end.y)
-          )
-            continue;
-          if (fresh[i][j].state === "start" || fresh[i][j].state === "end") {
-            fresh[i][j].state = "empty";
-          }
-        }
-      }
-
+      const structure = buildGridStructure(state.rows, state.cols, {
+        start: state.start,
+        end: state.end
+      });
+      const fresh = structure.grid;
       gridRef.current = fresh;
 
       // Run the maze generator
@@ -491,6 +605,9 @@ const App: React.FC = () => {
     animateBatch
   ]);
 
+  const gridPixelWidth = gridMetrics.cellSize * state.cols;
+  const gridPixelHeight = gridMetrics.cellSize * state.rows;
+
   return (
     <div
       className="App"
@@ -552,11 +669,9 @@ const App: React.FC = () => {
               value={animationSpeed}
               onChange={(e) => setAnimationSpeed(Number(e.target.value))}
             >
-              <option value={0}>Instant (0 ms)</option>
-              <option value={1}>Ultra (1 ms)</option>
-              <option value={10}>Fast (10 ms)</option>
-              <option value={50}>Med (50 ms)</option>
-              <option value={200}>Slow (200 ms)</option>
+              <option value={10}>Fast</option>
+              <option value={50}>Med</option>
+              <option value={200}>Slow</option>
             </select>
           </div>
         </div>
@@ -580,8 +695,12 @@ const App: React.FC = () => {
         <div
           className="grid"
           style={{
-            gridTemplateColumns: `repeat(${initialColumns}, 1fr)`,
-            gridTemplateRows: `repeat(${initialRows}, 1fr)`
+            width: `${gridPixelWidth}px`,
+            height: `${gridPixelHeight}px`,
+            maxWidth: "100%",
+            maxHeight: "100%",
+            gridTemplateColumns: `repeat(${state.cols}, 1fr)`,
+            gridTemplateRows: `repeat(${state.rows}, 1fr)`
           }}
         >
           {state.grid.map((row) =>

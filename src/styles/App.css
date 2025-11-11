@@ -7,8 +7,9 @@
     flex-direction: column;
     margin: 0;
     padding: 0;
-    height: 100vh;
-    width: 100vw;
+    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100%;
     overflow: hidden;
 }
 
@@ -17,9 +18,12 @@ nav {
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    height: 60px;
-    padding: 0 20px;
-    background-color: #000000;
+    min-height: 60px;
+    padding: 10px 20px;
+    background-color: #ffffff;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: black;
 }
 
 .nav-title {
@@ -29,7 +33,17 @@ nav {
 
 .controls {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
+    justify-content: flex-end;
+    flex: 1;
+}
+
+select {
+    padding: 5px 10px;
+    border: 1px solid #ced4da;
+    border-radius: 5px;
+    cursor: pointer;
 }
 
 .control-btn {
@@ -57,12 +71,36 @@ nav {
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 20px;
+    padding: clamp(12px, 2vw, 32px);
+    overflow: auto;
 }
 
 .grid {
     display: grid;
-    width: 100%;
-    height: 80%;
     background-color: rgb(170, 196, 204);
+    border-radius: 6px;
+
+}
+
+@media (max-width: 768px) {
+    nav {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .controls {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 520px) {
+    .controls {
+        gap: 6px;
+    }
+
+    .control-btn {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 120px;
+    }
 }

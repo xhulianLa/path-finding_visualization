@@ -14,6 +14,10 @@ nav {
   background-color: violet;
 }
 
+.nav-title {
+  color: black;
+}
+
 main {
   flex-grow: 2;
   display: flex;

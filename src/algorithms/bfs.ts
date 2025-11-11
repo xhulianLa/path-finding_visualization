@@ -1,5 +1,6 @@
 // src/algorithms/bfs.ts
 import { GridCell, Position } from "../types";
+import { parseKey } from "./utils";
 
 const getNeighbours = (grid: GridCell[][], node: GridCell): GridCell[] => {
     const possible = [
@@ -38,14 +39,15 @@ export const bfs = (
         node.visited = true;
         visited[node.key] = node;
         if (node.x === endPos.x && node.y === endPos.y) {
-            let path: GridCell[] = [];
-            let current = node;
+            const path: GridCell[] = [];
+            let current: GridCell | undefined = node;
             while (current.prevNode) {
                 path.push(current);
-                const [prevX, prevY] = current.prevNode.split("x").map(Number);
-                current = visited[current.prevNode] || grid[prevX][prevY];
+                const prevKey = current.prevNode as string;
+                const { x: prevX, y: prevY } = parseKey(prevKey);
+                current = visited[prevKey] || grid[prevX][prevY];
             }
-            path.shift();
+            path.reverse();
             return [visited, path];
         }
         const neighbours = getNeighbours(grid, node);

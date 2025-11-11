@@ -1,5 +1,6 @@
 // src/algorithms/dijkstra.ts
 import { GridCell, Position } from "../types";
+import { parseKey } from "./utils";
 
 const minCostNode = (
     nodes: { [key: string]: GridCell },
@@ -63,13 +64,17 @@ export const dijkstra = (
             foundEndNode = true;
             visitedNodes[`${endPos.x}x${endPos.y}`] = currentNode;
 
-            let retracedPath: GridCell[] = [];
-            let currentRetrace = visitedNodes[`${endPos.x}x${endPos.y}`];
-            while (currentRetrace.prevNode) {
+            const retracedPath: GridCell[] = [];
+            let currentRetrace: GridCell | undefined =
+                visitedNodes[`${endPos.x}x${endPos.y}`];
+            while (currentRetrace?.prevNode) {
                 retracedPath.push(currentRetrace);
-                currentRetrace = visitedNodes[currentRetrace.prevNode];
+                const prevKey = currentRetrace.prevNode as string;
+                const { x: prevX, y: prevY } = parseKey(prevKey);
+                currentRetrace =
+                    visitedNodes[prevKey] || grid[prevX][prevY];
             }
-            retracedPath.shift(); // Remove start node from path
+            retracedPath.reverse();
             return [visitedNodes, retracedPath];
         }
 

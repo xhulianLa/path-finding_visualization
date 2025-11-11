@@ -1,5 +1,6 @@
 // src/algorithms/astar.ts
 import { GridCell, Position } from "../types";
+import { parseKey } from "./utils";
 
 // Use Manhattan distance for the heuristic.
 const heuristic = (node: GridCell, end: GridCell): number =>
@@ -62,16 +63,17 @@ export const aStar = (
         // If reached the end, reconstruct the path.
         if (currentNode.x === endPos.x && currentNode.y === endPos.y) {
             closedSet[currentNode.key] = currentNode;
-            let retracedPath: GridCell[] = [];
-            let temp = currentNode;
+            const retracedPath: GridCell[] = [];
+            let temp: GridCell | undefined = currentNode;
             while (temp.prevNode) {
                 retracedPath.push(temp);
                 // Retrieve the previous node from closedSet if available;
                 // otherwise, parse its coordinates from the key.
-                const [prevX, prevY] = temp.prevNode.split("x").map(Number);
-                temp = closedSet[temp.prevNode] || grid[prevX][prevY];
+                const prevKey = temp.prevNode as string;
+                const { x: prevX, y: prevY } = parseKey(prevKey);
+                temp = closedSet[prevKey] || grid[prevX][prevY];
             }
-            retracedPath.shift(); // remove the start node from the path
+            retracedPath.reverse();
             return [closedSet, retracedPath];
         }
 

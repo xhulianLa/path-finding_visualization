@@ -19,6 +19,7 @@
     background-color: #2a272d;
     animation: 0.4s wallAnimation ease-in-out;
     transform-origin: center;
+    /* border: 0px solid #2a272d; */
 }
 
 .cell.visited {
@@ -47,6 +48,7 @@
 
 .cell.path {
     background-color: rgb(255, 254, 106);
+    /* border: 0px solid rgb(255, 254, 106); */
 }
 
 .cell.start {
@@ -70,7 +72,7 @@
 
 
     50% {
-        transform: scale(1.4);
+        transform: scale(1.8);
     }
 
     100% {
