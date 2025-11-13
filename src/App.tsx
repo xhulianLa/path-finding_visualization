@@ -8,6 +8,8 @@ import React, {
 } from "react";
 import "./styles/App.css";
 import GridElement from "./components/GridElement";
+import TutorialModal from "./components/Tutorial/TutorialModal";
+import { TUTORIAL_PAGES } from "./tutorialPages";
 import { dijkstra } from "./algorithms/dijkstra";
 import { aStar } from "./algorithms/astar";
 import { dfs } from "./algorithms/dfs";
@@ -58,6 +60,8 @@ type AppAction =
   | { type: "SET_DRAGGING_END"; isDragging: boolean }
   | { type: "MOVE_START"; newPos: Position }
   | { type: "MOVE_END"; newPos: Position };
+
+
 
 // --- Helpers to create/reset the grid ---
 const clampPositionWithinGrid = (
@@ -123,12 +127,13 @@ const buildGridStructure = (
     }
   }
 
+  const centerRow = Math.min(rows - 1, Math.max(0, Math.floor(rows / 2)));
   const defaultStart: Position = {
-    x: Math.min(rows - 1, Math.max(0, Math.floor(rows / 4))),
+    x: centerRow,
     y: Math.min(cols - 1, Math.max(0, Math.floor(cols / 4)))
   };
   const defaultEnd: Position = {
-    x: Math.min(rows - 1, Math.max(0, Math.floor(rows / 4))),
+    x: centerRow,
     y: Math.min(cols - 1, Math.max(0, Math.floor((3 * cols) / 4)))
   };
 
@@ -257,8 +262,37 @@ const App: React.FC = () => {
   );
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [animationSpeed, setAnimationSpeed] = useState(25);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(true);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const totalTutorialPages = TUTORIAL_PAGES.length;
   const isDragging = useRef(false);
   const lastCell = useRef<Position | null>(null);
+  const drawModeRef = useRef<DrawModeType>(null);
+  const setDrawMode = useCallback(
+    (mode: DrawModeType) => {
+      drawModeRef.current = mode;
+      dispatch({ type: "SET_DRAW_MODE", drawMode: mode });
+    },
+    [dispatch]
+  );
+
+  const handleTutorialNext = useCallback(() => {
+    setTutorialStep((prev) =>
+      Math.min(prev + 1, Math.max(totalTutorialPages - 1, 0))
+    );
+  }, [totalTutorialPages]);
+
+  const handleTutorialPrev = useCallback(() => {
+    setTutorialStep((prev) => Math.max(prev - 1, 0));
+  }, []);
+
+  const handleTutorialSkip = useCallback(() => {
+    setIsTutorialOpen(false);
+  }, []);
+
+  const handleTutorialFinish = useCallback(() => {
+    setIsTutorialOpen(false);
+  }, []);
 
   // Keep latest grid in a ref for the algorithm
   const gridRef = useRef(state.grid);
@@ -314,13 +348,13 @@ const App: React.FC = () => {
       setIsMouseDown(false);
       isDragging.current = false;
       lastCell.current = null;
-      dispatch({ type: "SET_DRAW_MODE", drawMode: null });
+      setDrawMode(null);
       dispatch({ type: "SET_DRAGGING_START", isDragging: false });
       dispatch({ type: "SET_DRAGGING_END", isDragging: false });
     };
     document.addEventListener("mouseup", onUp);
     return () => document.removeEventListener("mouseup", onUp);
-  }, []);
+  }, [setDrawMode]);
 
   // Briefly disable hover after mouse-up
   const [canHover, setCanHover] = useState(true);
@@ -342,12 +376,12 @@ const App: React.FC = () => {
   // Handle initial click/drag start
   const handleMouseDown = useCallback(
     (x: number, y: number) => {
-      if (state.isRunning) return;
+      if (state.isRunning || isTutorialOpen) return;
       isDragging.current = false;
       lastCell.current = null;
       dispatch({ type: "SET_DRAGGING_START", isDragging: false });
       dispatch({ type: "SET_DRAGGING_END", isDragging: false });
-      dispatch({ type: "SET_DRAW_MODE", drawMode: null });
+      setDrawMode(null);
       setIsMouseDown(true);
 
       // dragging start/end?
@@ -362,18 +396,18 @@ const App: React.FC = () => {
       } else {
         // draw wall/empty
         const cell = state.grid[x][y];
-        const newState = cell.state === "wall" ? "empty" : "wall";
-        dispatch({ type: "SET_DRAW_MODE", drawMode: newState as any });
+        const newState: DrawModeType = cell.state === "wall" ? "empty" : "wall";
+        setDrawMode(newState);
         dispatch({ type: "SET_CELL", x, y, updates: { state: newState } });
       }
     },
-    [state]
+    [state, setDrawMode, isTutorialOpen]
   );
 
   // Handle hover/drag over cells
   const handleMouseEnter = useCallback(
     (x: number, y: number) => {
-      if (!isMouseDown || state.isRunning || !canHover) return;
+      if (!isMouseDown || state.isRunning || !canHover || isTutorialOpen) return;
       if (lastCell.current?.x === x && lastCell.current.y === y) return;
       lastCell.current = { x, y };
 
@@ -401,23 +435,24 @@ const App: React.FC = () => {
         (x === state.end.x && y === state.end.y)
       )
         return;
-      if (state.drawMode === "wall") {
+      const drawMode = drawModeRef.current ?? state.drawMode;
+      if (drawMode === "wall") {
         dispatch({ type: "SET_CELL", x, y, updates: { state: "wall" } });
-      } else if (state.drawMode === "empty") {
+      } else if (drawMode === "empty") {
         dispatch({ type: "SET_CELL", x, y, updates: { state: "empty" } });
       }
     },
-    [isMouseDown, state, canHover]
+    [isMouseDown, state, canHover, isTutorialOpen]
   );
 
   const handleMouseUp = useCallback(() => {
     setIsMouseDown(false);
     isDragging.current = false;
     lastCell.current = null;
-    dispatch({ type: "SET_DRAW_MODE", drawMode: null });
+    setDrawMode(null);
     dispatch({ type: "SET_DRAGGING_START", isDragging: false });
     dispatch({ type: "SET_DRAGGING_END", isDragging: false });
-  }, []);
+  }, [setDrawMode]);
 
   const handleGridMouseLeave = useCallback(() => {
     handleMouseUp();
@@ -432,7 +467,7 @@ const App: React.FC = () => {
 
   // Reset path (keep walls)
   const resetPath = useCallback(() => {
-    if (state.isRunning) return;
+    if (state.isRunning || isTutorialOpen) return;
     const g2 = state.grid.map((row) =>
       row.map((cell) => {
         if (cell.state === "wall") {
@@ -455,17 +490,17 @@ const App: React.FC = () => {
     );
     dispatch({ type: "SET_GRID", grid: g2 });
     gridRef.current = g2;
-  }, [state]);
+  }, [state, isTutorialOpen]);
 
   const resetGrid = useCallback(() => {
-    if (state.isRunning) return;
+    if (state.isRunning || isTutorialOpen) return;
     const structure = buildGridStructure(state.rows, state.cols);
     dispatch({ type: "RESET_GRID", payload: structure });
     gridRef.current = structure.grid;
-  }, [state.isRunning, state.rows, state.cols]);
+  }, [state.isRunning, state.rows, state.cols, isTutorialOpen]);
 
   const generateMaze = useCallback(async () => {
-    if (state.isRunning) return;
+    if (state.isRunning || isTutorialOpen) return;
     dispatch({ type: "SET_RUNNING", isRunning: true });
     try {
       const structure = buildGridStructure(state.rows, state.cols, {
@@ -497,7 +532,14 @@ const App: React.FC = () => {
     } finally {
       dispatch({ type: "SET_RUNNING", isRunning: false });
     }
-  }, [state.start, state.end, state.isRunning]);
+  }, [
+    state.start,
+    state.end,
+    state.isRunning,
+    state.rows,
+    state.cols,
+    isTutorialOpen
+  ]);
 
   // Pick algorithm
   const runSelectedAlgorithm = useCallback(
@@ -543,7 +585,7 @@ const App: React.FC = () => {
 
   // Start visualization
   const startAlgorithm = useCallback(async () => {
-    if (state.isRunning) return;
+    if (state.isRunning || isTutorialOpen) return;
     resetPath();
     await delay(5);
 
@@ -602,7 +644,8 @@ const App: React.FC = () => {
     delay,
     resetPath,
     runSelectedAlgorithm,
-    animateBatch
+    animateBatch,
+    isTutorialOpen
   ]);
 
   const gridPixelWidth = gridMetrics.cellSize * state.cols;
@@ -613,33 +656,60 @@ const App: React.FC = () => {
       className="App"
       style={{ "--anim-speed": `${animationSpeed}ms` } as React.CSSProperties}
     >
+      <TutorialModal
+        heading="Getting Started"
+        pages={TUTORIAL_PAGES}
+        currentIndex={tutorialStep}
+        visible={isTutorialOpen}
+        onNext={handleTutorialNext}
+        onPrev={handleTutorialPrev}
+        onSkip={handleTutorialSkip}
+        onFinish={handleTutorialFinish}
+      />
       <nav>
         <div className="nav-title">Pathfinding Visualizer</div>
+
         <div className="controls">
+          <div className="nav-legend" aria-label="Legend">
+            <div className="legend-item">
+              <span
+                className="legend-swatch legend-swatch--start"
+                aria-hidden="true"
+              />
+              <span>Start</span>
+            </div>
+            <div className="legend-item">
+              <span
+                className="legend-swatch legend-swatch--end"
+                aria-hidden="true"
+              />
+              <span>End</span>
+            </div>
+          </div>
           <button
-            className="control-btn"
-            disabled={state.isRunning}
+            className="visualize-btn"
+            disabled={state.isRunning || isTutorialOpen}
             onClick={startAlgorithm}
           >
-            {state.isRunning ? "Running..." : "Start"}
+            {state.isRunning ? "Running..." : "Visualize"}
           </button>
           <button
             className="control-btn"
-            disabled={state.isRunning}
+            disabled={state.isRunning || isTutorialOpen}
             onClick={resetPath}
           >
             Reset Path
           </button>
           <button
             className="control-btn"
-            disabled={state.isRunning}
+            disabled={state.isRunning || isTutorialOpen}
             onClick={resetGrid}
           >
             Reset Grid
           </button>
           <button
             className="control-btn"
-            disabled={state.isRunning}
+            disabled={state.isRunning || isTutorialOpen}
             onClick={generateMaze}
           >
             Generate Maze
@@ -647,7 +717,7 @@ const App: React.FC = () => {
           <div>
             <label>Algorithm: </label>
             <select
-              disabled={state.isRunning}
+              disabled={state.isRunning || isTutorialOpen}
               value={state.algorithm}
               onChange={(e) =>
                 dispatch({
@@ -665,7 +735,7 @@ const App: React.FC = () => {
           <div>
             <label>Speed: </label>
             <select
-              disabled={state.isRunning}
+              disabled={state.isRunning || isTutorialOpen}
               value={animationSpeed}
               onChange={(e) => setAnimationSpeed(Number(e.target.value))}
             >
@@ -680,7 +750,7 @@ const App: React.FC = () => {
       <div
         className="gridContainer"
         onMouseMove={(e) => {
-          if (e.buttons !== 1 || state.isRunning) return;
+          if (e.buttons !== 1 || state.isRunning || isTutorialOpen) return;
           const el = document.elementFromPoint(e.clientX, e.clientY);
           if (!el) return;
           const c = el.closest(".cell") as HTMLElement | null;

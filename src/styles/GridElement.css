@@ -19,7 +19,7 @@
     background-color: #2a272d;
     animation: 0.4s wallAnimation ease-in-out;
     transform-origin: center;
-    /* border: 0px solid #2a272d; */
+    border: 0px solid #2a272d;
 }
 
 .cell.visited {

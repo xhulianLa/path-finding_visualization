@@ -24,6 +24,6 @@ const GridElement = memo(({ x, y, state, onCellClick, onCellMouseUp, onMouseEnte
             <div className={state === "visited" ? "inner_visited" : "inner"} />
         </div>
     );
-}, (p, n) => p.state === n.state);
+});
 
 export default GridElement;
